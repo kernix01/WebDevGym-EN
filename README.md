@@ -6,7 +6,7 @@ Live Demo
 
 Open on GitHub Pages after you deploy it — the URL will be:
 
-https://kernix01.github.io/WebDevGym - EN/
+https://kernix01.github.io/WebDevGym-EN//
 What's inside
 
 The roadmap is split into three groups:
