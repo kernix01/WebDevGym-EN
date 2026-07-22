@@ -1,7 +1,9 @@
 (function () {
   'use strict';
 
-  const isEnglish = /index-en\.html$/i.test(location.pathname);
+  const isEnglish = document.documentElement.lang.toLowerCase().startsWith('en') ||
+    /index-en\.html$/i.test(location.pathname) ||
+    /(?:^|\/)WebDevGym-EN(?:\/|$)/i.test(location.pathname);
   const copy = isEnglish ? {
     library: 'All sections', search: 'Find a section...', close: 'Close', next: 'Next', current: 'In progress'
   } : {
