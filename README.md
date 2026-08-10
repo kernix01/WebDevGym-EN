@@ -1,54 +1,57 @@
-Frontend Developer Roadmap
+# WebDevGym
 
-An interactive learning platform built as a single HTML file. Study topics, take mini-tests, solve practice tasks, and track your progress — all without any server or installation.
+Интерактивный тренажёр frontend-разработки на русском и английском языках. Работает без backend: прогресс, настройки, заметки и пользовательские материалы сохраняются локально в браузере.
 
-Live Demo
+Демо: https://kernix01.github.io/WebDevGym/
 
-Open on GitHub Pages after you deploy it — the URL will be:
+## Что внутри
 
-https://kernix01.github.io/WebDevGym-EN//
-What's inside
+- HTML, CSS, JavaScript, TypeScript, React, Git, Node.js, SQL, Linux, PostgreSQL и Vite.
+- Теория с подробными объяснениями и примерами кода.
+- Практика, тренажёры, Forge, Playground и Debug Lab.
+- Nexus, календарь обучения, локальный профиль и импорт/экспорт данных.
+- Тёмная и светлая темы, персонализация, собственные фоны и звуки.
+- PWA-режим для установки сайта как приложения.
 
-The roadmap is split into three groups:
+## Структура проекта
 
-Frontend — HTML, CSS, JavaScript, TypeScript, React, Git
+- `index.html` — русская оболочка интерфейса.
+- `index-en.html` — английская оболочка интерфейса.
+- `data/curriculum-ru.js` — все русские уроки.
+- `data/curriculum-en.js` — все английские уроки.
+- `js/webdevgym-curriculum-renderer.js` — вставляет уроки в нужные разделы.
+- `css/` и `js/` — стили и функциональные модули.
+- `manifest.webmanifest` и `sw.js` — установка и офлайн-кэш PWA.
 
-Backend & Extra — Node.js, SQL, Servers, Linux, Vite
+Учебный контент редактируется в `data/curriculum-*.js`, а не внутри HTML-файлов.
 
-Other — Guides, Practice, Common mistakes, Resources, Career path, Figma basics, Playground, Cheatsheets, GitHub
+## Локальный запуск
 
-Each topic has a theory block with code examples, a mini-test (2–3 questions), and a practice task. Checkboxes unlock only after you pass both the test and the task.
+Для полной проверки PWA и service worker запустите локальный сервер из корня проекта:
 
-Features
+```powershell
+python -m http.server 4173
+```
 
-Progress dashboard with per-language bars and percentages
-Dark and light mode
-Bookmarks for topics you want to revisit
-Full-text search across all topics
-Built-in code playground (HTML/CSS/JS)
-GitHub tab — search repos and push files directly to your repository via API
-How to deploy
+Затем откройте `http://127.0.0.1:4173/index.html`.
 
-Option 1 — GitHub Pages (recommended)
+## Проверка контента
 
-Create a new repository on GitHub
-Upload index.html to the root of the main branch
-Go to Settings → Pages → Source: main branch, / (root)
-Your site will be live in about a minute
-Option 2 — Push from the app itself
+```powershell
+node tools/validate-curriculum.cjs
+node tools/test-curriculum-renderer.cjs
+```
 
-Open the GitHub tab inside the roadmap, fill in your username, repository name, and a Personal Access Token (with repo scope), select the file and click Push. The token is never saved anywhere — it only lives in the current browser tab.
+Валидатор проверяет количество уроков, уникальность ID, наличие разделов, порядок подключения скриптов, вложенные интерактивные элементы и чистоту английского учебного контента.
 
-Option 3 — Local use
+## Развёртывание
 
-Just double-click index.html. No server needed.
+Загрузите всё содержимое проекта в корень репозитория и включите GitHub Pages для ветки `main`. Загружать только `index.html` нельзя: интерфейс использует файлы из папок `data`, `css` и `js`.
 
-Resetting progress
+## Данные пользователя
 
-Click the Reset button in the top bar. This clears localStorage so all checkboxes go back to zero. Your bookmarks are also cleared.
+Серверная регистрация не требуется. Данные остаются в текущем браузере и переносятся через функции Import и Export. Секретные ключи нельзя публиковать в репозитории.
 
-Notes
+## Лицензия
 
-Progress is saved in localStorage and persists between sessions in the same browser
-Locked checkboxes (🔒) unlock only after passing the mini-test and practice task for that topic
-The file is self-contained — no CDN dependencies for core functionality
+Проект распространяется по лицензии GPL-3.0. Подробности находятся в файле `LICENSE`.
