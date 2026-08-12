@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webdevgym-shell-2026-08-12-v75';
+const CACHE_NAME = 'webdevgym-shell-2026-08-12-v76';
 const APP_SHELL = [
   './index.html',
   './index-en.html',
