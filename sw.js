@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webdevgym-shell-2026-08-12-v76';
+const CACHE_NAME = 'webdevgym-shell-2026-08-12-v77';
 const APP_SHELL = [
   './index.html',
   './index-en.html',
@@ -41,6 +41,7 @@ const APP_SHELL = [
   './css/webdevgym-playground-atlas.css',
   './css/webdevgym-usability.css',
   './css/webdevgym-project-mode.css',
+  './css/webdevgym-notebook.css',
   './data/curriculum-ru.js',
   './data/curriculum-en.js',
   './data/curriculum-depth-2026.js',
@@ -87,7 +88,8 @@ const APP_SHELL = [
   './js/vendor/emmet-browser.min.js?v=2.4.11',
   './js/webdevgym-playground-atlas.js',
   './js/webdevgym-usability.js',
-  './js/webdevgym-project-mode.js'
+  './js/webdevgym-project-mode.js',
+  './js/webdevgym-notebook.js'
 ];
 
 self.addEventListener('install', event => {
