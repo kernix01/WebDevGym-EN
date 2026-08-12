@@ -81,7 +81,9 @@
     noActivity: 'Complete lessons or practice tasks to build the heatmap.',
     privateNote: 'Nothing is uploaded to a server.',
     downloadJson: 'Download profile backup',
-    importJson: 'Import profile backup'
+    importJson: 'Import profile backup',
+    hideAchievement: 'Hide achievement',
+    restoreAchievements: 'Restore hidden achievements'
   } : {
     title: 'Локальный профиль',
     subtitle: 'Личное портфолио и учебный профиль, которые хранятся в этом браузере.',
@@ -161,6 +163,8 @@
     privateNote: 'На сервер ничего не отправляется.',
     downloadJson: 'Скачать резервную копию профиля',
     importJson: 'Импортировать резервную копию'
+    ,hideAchievement: 'Скрыть достижение'
+    ,restoreAchievements: 'Вернуть скрытые достижения'
   };
 
   const PROFILE_KEY = 'wdg_profile_v1';
@@ -175,7 +179,9 @@
   const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
   const VIDEO_TYPES = new Set(['video/mp4', 'video/webm']);
   const SIDEBAR_KEY = 'wdgp_sidebar_collapsed_v1';
+  const HIDDEN_ACHIEVEMENTS_KEY = 'wdgp_hidden_achievements_v1';
   const objectUrls = new Set();
+  let renderGeneration = 0;
 
   function readJson(key, fallback) {
     try {
@@ -445,22 +451,26 @@
 
   function achievementMarkup(progress, projects, activity) {
     const earned = [
-      { icon: 'tabler:code', title: isEnglish ? 'First steps' : 'Первые шаги', done: progress.done >= 1 },
-      { icon: 'tabler:flame', title: isEnglish ? 'Three-day streak' : 'Серия из трёх дней', done: streak(activity) >= 3 },
-      { icon: 'tabler:briefcase', title: isEnglish ? 'Project shipped' : 'Проект завершён', done: projects.some(item => item.status === 'finished') },
-      { icon: 'tabler:brand-github', title: isEnglish ? 'Public evidence' : 'Публичный результат', done: projects.some(item => safeUrl(item.link)) }
+      { id: 'first-steps', icon: 'tabler:code', title: isEnglish ? 'First steps' : 'Первые шаги', done: progress.done >= 1 },
+      { id: 'three-day-streak', icon: 'tabler:flame', title: isEnglish ? 'Three-day streak' : 'Серия из трёх дней', done: streak(activity) >= 3 },
+      { id: 'project-shipped', icon: 'tabler:briefcase', title: isEnglish ? 'Project shipped' : 'Проект завершён', done: projects.some(item => item.status === 'finished') },
+      { id: 'public-evidence', icon: 'tabler:brand-github', title: isEnglish ? 'Public evidence' : 'Публичный результат', done: projects.some(item => safeUrl(item.link)) }
     ];
-    return earned.map(item => '<div class="wdgp-achievement' + (item.done ? ' earned' : '') + '">' +
+    const hidden = new Set(readJson(HIDDEN_ACHIEVEMENTS_KEY, []));
+    return earned.filter(item => !hidden.has(item.id)).map(item => '<div class="wdgp-achievement' + (item.done ? ' earned' : '') + '" data-achievement-id="' + item.id + '">' +
       '<span>' + icon(item.icon, 19) + '</span><div><strong>' + item.title + '</strong><small>' +
       (item.done ? (isEnglish ? 'Unlocked' : 'Получено') : (isEnglish ? 'Locked' : 'Не открыто')) +
-      '</small></div></div>').join('');
+      '</small></div><button class="wdgp-achievement-hide" type="button" data-hide-achievement="' + item.id + '" title="' + text.hideAchievement + '" aria-label="' + text.hideAchievement + '">' + icon('tabler:x', 14) + '</button></div>').join('');
+  }
+
+  function hiddenAchievementCount() {
+    return readJson(HIDDEN_ACHIEVEMENTS_KEY, []).length;
   }
 
   function profileBody(profile, projects) {
     const activity = readJson(ACTIVITY_KEY, {});
     const progress = totalProgress();
     const skills = skillRows();
-    const state = readiness(profile, projects);
     const activityTotal = Object.values(activity).reduce((sum, value) => sum + Number(value || 0), 0);
     const tags = String(profile.tags || profile.stack).split(',').map(tag => tag.trim()).filter(Boolean).slice(0, 8);
     const avatar = profile.avatar
@@ -507,11 +517,12 @@
           '</div></div></section>' +
           '<section class="wdgp-tab-panel" data-profile-panel="activity"><div class="wdgp-panel"><div class="wdgp-section-head"><div><h2>' + text.learning + '</h2><p>' + activityTotal + ' ' + text.totalSessions + '</p></div><span class="wdgp-chip">' + text.weeks + '</span></div><div class="wdgp-heatmap large">' + activityCells(activity) + '</div>' +
             (!activityTotal ? '<p class="wdgp-muted">' + text.noActivity + '</p>' : '') + '</div></section>' +
-          '<section class="wdgp-tab-panel" data-profile-panel="achievements"><div class="wdgp-panel"><h2>' + text.achievements + '</h2><div class="wdgp-achievement-grid">' + achievementMarkup(progress, projects, activity) + '</div></div></section>' +
+          '<section class="wdgp-tab-panel" data-profile-panel="achievements"><div class="wdgp-panel"><div class="wdgp-section-head"><h2>' + text.achievements + '</h2>' +
+            (hiddenAchievementCount() ? '<button class="wdgp-btn" type="button" data-restore-achievements>' + icon('tabler:restore', 15) + ' ' + text.restoreAchievements + '</button>' : '') +
+          '</div><div class="wdgp-achievement-grid">' + achievementMarkup(progress, projects, activity) + '</div></div></section>' +
         '</main>' +
 
         '<aside class="wdgp-aside">' +
-          '<section class="wdgp-panel wdgp-readiness"><div class="wdgp-section-head"><h2>' + text.ready + '</h2><strong>' + state.pct + '%</strong></div><progress max="100" value="' + state.pct + '"></progress><p><b>' + text.next + ':</b> ' + escapeHtml(state.next) + '</p></section>' +
           '<section class="wdgp-panel"><div class="wdgp-section-head"><h2>' + text.skills + '</h2><span class="wdgp-chip">' + progress.pct + '%</span></div><div class="wdgp-skill-list compact">' +
             skills.map(skill => '<div class="wdgp-skill"><div><strong>' + skill.label + '</strong><span>' + skill.stats.pct + '%</span></div><progress max="100" value="' + skill.stats.pct + '" style="--skill-color:' + skill.color + '"></progress></div>').join('') +
           '</div></section>' +
@@ -693,6 +704,7 @@
 
   function renderMedia(container, blob, options) {
     if (!container || !blob) return;
+    clearMediaPreview(container);
     const url = blobUrl(blob);
     const isVideo = blob.type.startsWith('video/');
     const className = options?.cover ? 'wdgp-cover-media' : 'wdgp-media-object';
@@ -822,11 +834,12 @@
     applyPreviewSettings(form, editorName);
   }
 
-  async function hydrateEditorPreview(form, editorName, key) {
+  async function hydrateEditorPreview(form, editorName, key, generation) {
     const preview = form?.querySelector('[data-media-preview="' + editorName + '"]');
     if (!preview) return;
     clearMediaPreview(preview);
     const blob = await assetGet(key);
+    if (generation != null && (generation !== renderGeneration || !form?.isConnected)) return;
     if (blob) {
       renderMedia(preview, blob);
       const fileName = form.querySelector('[data-file-name="' + editorName + '"]');
@@ -834,35 +847,39 @@
     }
   }
 
-  async function hydrateImages(page, profile, projects) {
+  async function hydrateImages(page, profile, projects, generation) {
     try {
       const [cover, avatar] = await Promise.all([assetGet('cover'), assetGet('avatar')]);
+      if (generation !== renderGeneration || !page.isConnected) return;
       if (cover) {
         const coverElement = page.querySelector('[data-cover-preview]');
+        if (!coverElement) return;
         coverElement.style.cssText += mediaStyle(mediaSettings(profile, 'cover'));
         renderMedia(coverElement, cover, { cover:true });
       }
       if (avatar) {
         const element = page.querySelector('[data-avatar-preview]');
+        if (!element) return;
         element.style.cssText = mediaStyle(mediaSettings(profile, 'avatar'));
-        element.innerHTML = '';
         renderMedia(element, avatar);
       } else if (profile.avatar) {
         const element = page.querySelector('[data-avatar-preview]');
+        if (!element) return;
         element.style.cssText = mediaStyle(mediaSettings(profile, 'avatar'));
         element.innerHTML = '<img class="wdgp-media-object" src="' + escapeHtml(profile.avatar) + '" alt="">';
       }
       await Promise.all(projects.map(async project => {
         const blob = await assetGet('project:' + project.id);
-        if (!blob) return;
+        if (!blob || generation !== renderGeneration || !page.isConnected) return;
         const media = page.querySelector('[data-project-image="' + CSS.escape(project.id) + '"]');
         if (!media) return;
         renderMedia(media, blob);
       }));
+      if (generation !== renderGeneration || !page.isConnected) return;
       const profileForm = page.querySelector('[data-profile-form]');
       await Promise.all([
-        hydrateEditorPreview(profileForm, 'avatar', 'avatar'),
-        hydrateEditorPreview(profileForm, 'cover', 'cover')
+        hydrateEditorPreview(profileForm, 'avatar', 'avatar', generation),
+        hydrateEditorPreview(profileForm, 'cover', 'cover', generation)
       ]);
     } catch (error) {
       console.warn('Profile images are unavailable:', error);
@@ -983,6 +1000,19 @@
         page.querySelectorAll('[data-profile-tab]').forEach(item => item.classList.toggle('active', item === button));
         page.querySelectorAll('[data-profile-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.profilePanel === button.dataset.profileTab));
       });
+    });
+
+    page.querySelectorAll('[data-hide-achievement]').forEach(button => {
+      button.addEventListener('click', () => {
+        const hidden = new Set(readJson(HIDDEN_ACHIEVEMENTS_KEY, []));
+        hidden.add(button.dataset.hideAchievement);
+        writeJson(HIDDEN_ACHIEVEMENTS_KEY, [...hidden]);
+        window.WebDevGymFeatures.open('profile');
+      });
+    });
+    page.querySelector('[data-restore-achievements]')?.addEventListener('click', () => {
+      localStorage.removeItem(HIDDEN_ACHIEVEMENTS_KEY);
+      window.WebDevGymFeatures.open('profile');
     });
 
     profileForm.addEventListener('submit', async event => {
@@ -1139,6 +1169,7 @@
   }
 
   function renderProfile() {
+    const generation = ++renderGeneration;
     revokeObjectUrls();
     const profile = profileData();
     const projects = portfolioData();
@@ -1146,7 +1177,7 @@
     page.classList.add('wdgp-page');
     page.querySelector('.wdgf-page-head [data-feature-close]')?.remove();
     bindPage(page, profile, projects);
-    hydrateImages(page, profile, projects);
+    hydrateImages(page, profile, projects, generation);
     return page;
   }
 
