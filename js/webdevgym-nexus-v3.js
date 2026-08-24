@@ -85,8 +85,18 @@
     links: [],
     camera: { x: 0, y: 0, zoom: 1 },
     dragging: null,
+    dragFrame: 0,
     panning: null,
     frame: 0,
+    miniFrame: 0,
+    miniLastPaint: 0,
+    graphElements: new Map(),
+    sourceLines: new Map(),
+    targetLines: new Map(),
+    worldElement: null,
+    svgElement: null,
+    svgRect: null,
+    searchFrame: 0,
     timer: 0,
     wasActive: false,
     compact: false
@@ -314,7 +324,7 @@
     const label = escapeHtml(node.title.length > 18 ? `${node.title.slice(0, 17)}…` : node.title);
     if (node.type === 'topic') return `<g class="nx-node nx-node-topic${active ? ' active' : ''}${dim ? ' dim' : ''}" data-nx-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" style="--node-accent:${node.accent}">
       <circle class="nx-node-halo" r="${node.r + 12}"></circle><circle class="nx-node-core" r="${node.r}"></circle><text class="nx-node-label" text-anchor="middle" y="4">${label}</text></g>`;
-    return `<g class="nx-node nx-node-note${active ? ' active' : ''}${dim ? ' dim' : ''}" data-nx-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" style="--node-accent:${node.accent}" filter="url(#nxSoft)">
+    return `<g class="nx-node nx-node-note${active ? ' active' : ''}${dim ? ' dim' : ''}" data-nx-node="${escapeHtml(node.id)}" transform="translate(${node.x} ${node.y})" style="--node-accent:${node.accent}"${active ? ' filter="url(#nxSoft)"' : ''}>
       <circle class="nx-note-ring" r="${node.r + 3}"></circle><circle class="nx-note-core" r="${node.r}"></circle><text class="nx-note-icon" text-anchor="middle" y="5">◆</text><text class="nx-note-label" text-anchor="middle" y="${node.r + 20}">${label}</text></g>`;
   }
 
@@ -337,27 +347,75 @@
     }).join('');
     const path = pathNodes();
     nodeLayer.innerHTML = [...state.nodes.values()].filter(node => visible.has(node.id)).map(node => nodeMarkup(node, path)).join('');
+    cacheGraphElements();
     applyCamera();
     bindGraphNodes();
-    renderMinimap();
+  }
+
+  function cacheGraphElements() {
+    state.graphElements = new Map();
+    state.sourceLines = new Map();
+    state.targetLines = new Map();
+    state.worldElement = state.root?.querySelector('[data-nx-world]') || null;
+    state.svgElement = state.root?.querySelector('[data-nx-svg]') || null;
+    state.svgRect = null;
+    state.root?.querySelectorAll('[data-nx-node]').forEach(element => {
+      state.graphElements.set(element.dataset.nxNode, element);
+    });
+    state.root?.querySelectorAll('[data-source][data-target]').forEach(line => {
+      const source = line.dataset.source;
+      const target = line.dataset.target;
+      if (!state.sourceLines.has(source)) state.sourceLines.set(source, []);
+      if (!state.targetLines.has(target)) state.targetLines.set(target, []);
+      state.sourceLines.get(source).push(line);
+      state.targetLines.get(target).push(line);
+    });
   }
 
   function applyCamera() {
-    const world = state.root?.querySelector('[data-nx-world]');
-    if (world) world.setAttribute('transform', `translate(${state.camera.x} ${state.camera.y}) scale(${state.camera.zoom})`);
-    renderMinimap();
+    if (state.worldElement) state.worldElement.setAttribute('transform', `translate(${state.camera.x} ${state.camera.y}) scale(${state.camera.zoom})`);
+    scheduleMinimap();
+  }
+
+  function scheduleMinimap() {
+    if (state.miniFrame || document.hidden || !state.root?.classList.contains('active')) return;
+    const lightEffects = document.body.classList.contains('wdgr-light-effects');
+    const paint = now => {
+      state.miniFrame = 0;
+      if (now - state.miniLastPaint < (lightEffects ? 140 : 72) && (state.dragging || state.panning || state.frame)) {
+        state.miniFrame = requestAnimationFrame(paint);
+        return;
+      }
+      state.miniLastPaint = now;
+      renderMinimap();
+    };
+    state.miniFrame = requestAnimationFrame(paint);
   }
 
   function clientToWorld(clientX, clientY) {
-    const rect = state.root.querySelector('[data-nx-svg]').getBoundingClientRect();
+    const rect = state.svgRect || state.svgElement?.getBoundingClientRect();
+    if (!rect) return { x: clientX, y: clientY };
     return { x: (clientX - rect.left - state.camera.x) / state.camera.zoom, y: (clientY - rect.top - state.camera.y) / state.camera.zoom };
   }
 
   function updateNode(node) {
-    const element = state.root.querySelector(`[data-nx-node="${CSS.escape(node.id)}"]`);
+    const element = state.graphElements.get(node.id);
     if (element) element.setAttribute('transform', `translate(${node.x} ${node.y})`);
-    state.root.querySelectorAll(`[data-source="${CSS.escape(node.id)}"]`).forEach(line => { line.setAttribute('x1', node.x); line.setAttribute('y1', node.y); });
-    state.root.querySelectorAll(`[data-target="${CSS.escape(node.id)}"]`).forEach(line => { line.setAttribute('x2', node.x); line.setAttribute('y2', node.y); });
+    (state.sourceLines.get(node.id) || []).forEach(line => { line.setAttribute('x1', node.x); line.setAttribute('y1', node.y); });
+    (state.targetLines.get(node.id) || []).forEach(line => { line.setAttribute('x2', node.x); line.setAttribute('y2', node.y); });
+  }
+
+  function flushDraggedNode() {
+    state.dragFrame = 0;
+    const drag = state.dragging;
+    if (!drag || drag.nextX == null || drag.nextY == null) return;
+    const node = drag.node;
+    node.vx = drag.nextVx;
+    node.vy = drag.nextVy;
+    node.x = drag.nextX;
+    node.y = drag.nextY;
+    updateNode(node);
+    scheduleMinimap();
   }
 
   function bindGraphNodes() {
@@ -365,8 +423,9 @@
       element.addEventListener('pointerdown', event => {
         event.stopPropagation();
         const node = state.nodes.get(element.dataset.nxNode);
+        state.svgRect = state.svgElement?.getBoundingClientRect() || null;
         const point = clientToWorld(event.clientX, event.clientY);
-        state.dragging = { node, offsetX: point.x - node.x, offsetY: point.y - node.y, lastX: point.x, lastY: point.y, lastTime: performance.now(), moved: false };
+        state.dragging = { node, offsetX: point.x - node.x, offsetY: point.y - node.y, lastX: point.x, lastY: point.y, lastTime: performance.now(), moved: false, nextX: node.x, nextY: node.y, nextVx: 0, nextVy: 0 };
         element.classList.add('dragging');
         element.setPointerCapture(event.pointerId);
       });
@@ -378,17 +437,23 @@
         const nextX = point.x - state.dragging.offsetX;
         const nextY = point.y - state.dragging.offsetY;
         const dt = Math.max(8, now - state.dragging.lastTime);
-        node.vx = (nextX - node.x) / dt * 16;
-        node.vy = (nextY - node.y) / dt * 16;
-        node.x = nextX; node.y = nextY;
+        state.dragging.nextVx = (nextX - state.dragging.nextX) / dt * 16;
+        state.dragging.nextVy = (nextY - state.dragging.nextY) / dt * 16;
+        state.dragging.nextX = nextX;
+        state.dragging.nextY = nextY;
         state.dragging.moved ||= Math.hypot(point.x - state.dragging.lastX, point.y - state.dragging.lastY) > 2;
         state.dragging.lastX = point.x; state.dragging.lastY = point.y; state.dragging.lastTime = now;
-        updateNode(node); renderMinimap();
+        if (!state.dragFrame) state.dragFrame = requestAnimationFrame(flushDraggedNode);
       });
       const finish = event => {
         if (!state.dragging || state.dragging.node.id !== element.dataset.nxNode) return;
+        if (state.dragFrame) {
+          cancelAnimationFrame(state.dragFrame);
+          flushDraggedNode();
+        }
         const { node, moved } = state.dragging;
         state.dragging = null;
+        state.svgRect = null;
         element.classList.remove('dragging');
         if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
         if (moved) startInertia(node); else selectNode(node.id);
@@ -400,13 +465,30 @@
 
   function startInertia(node) {
     cancelAnimationFrame(state.frame);
+    state.frame = 0;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      saveGraph();
+      return;
+    }
+    let frames = 0;
+    const lightEffects = document.body.classList.contains('wdgr-light-effects');
     const tick = () => {
-      node.vx *= 0.84; node.vy *= 0.84;
+      if (document.hidden || !state.root?.classList.contains('active')) {
+        state.frame = 0;
+        saveGraph();
+        return;
+      }
+      node.vx *= lightEffects ? 0.66 : 0.8; node.vy *= lightEffects ? 0.66 : 0.8;
       node.x = Math.max(70, Math.min(1430, node.x + node.vx));
       node.y = Math.max(70, Math.min(790, node.y + node.vy));
-      updateNode(node); renderMinimap();
-      if (Math.hypot(node.vx, node.vy) > 0.18) state.frame = requestAnimationFrame(tick);
-      else saveGraph();
+      updateNode(node); scheduleMinimap();
+      frames += 1;
+      if (frames < (lightEffects ? 20 : 48) && Math.hypot(node.vx, node.vy) > 0.22) {
+        state.frame = requestAnimationFrame(tick);
+      } else {
+        state.frame = 0;
+        saveGraph();
+      }
     };
     state.frame = requestAnimationFrame(tick);
   }
@@ -650,8 +732,16 @@
 
     root.addEventListener('input', event => {
       if (event.target.matches('[data-nx-search]')) {
-        state.query = event.target.value; renderExplorer(); renderGraph();
-        requestAnimationFrame(() => { const input = root.querySelector('[data-nx-search]'); input?.focus(); input?.setSelectionRange(state.query.length, state.query.length); });
+        state.query = event.target.value;
+        cancelAnimationFrame(state.searchFrame);
+        state.searchFrame = requestAnimationFrame(() => {
+          state.searchFrame = 0;
+          renderExplorer();
+          renderGraph();
+          const input = root.querySelector('[data-nx-search]');
+          input?.focus();
+          input?.setSelectionRange(state.query.length, state.query.length);
+        });
       }
       if (event.target.matches('[data-nx-note-title], [data-nx-note-body]')) saveEditor();
     });
@@ -659,6 +749,7 @@
     const stage = root.querySelector('[data-nx-stage]');
     stage.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-nx-node], button, input, textarea, .nx-explorer, .nx-inspector')) return;
+      state.svgRect = state.svgElement?.getBoundingClientRect() || null;
       state.panning = { startX: event.clientX, startY: event.clientY, x: state.camera.x, y: state.camera.y };
       stage.classList.add('panning'); stage.setPointerCapture(event.pointerId);
     });
@@ -670,7 +761,7 @@
     });
     const endPan = event => {
       if (!state.panning) return;
-      state.panning = null; stage.classList.remove('panning');
+      state.panning = null; state.svgRect = null; stage.classList.remove('panning');
       if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
       saveGraph();
     };
@@ -680,6 +771,7 @@
     window.addEventListener('resize', () => {
       clearTimeout(state.timer);
       state.timer = setTimeout(() => {
+        state.svgRect = null;
         const compact = isCompact();
         if (compact && !state.compact) {
           state.explorerOpen = false;
@@ -688,7 +780,7 @@
           renderInspector();
         }
         state.compact = compact;
-        renderMinimap();
+        scheduleMinimap();
       }, 120);
     });
   }
@@ -697,18 +789,35 @@
     setTimeout(() => {
       if (installShell() && state.root?.classList.contains('active')) setTimeout(fitGraph, 100);
       state.wasActive = Boolean(state.root?.classList.contains('active'));
-      const observer = new MutationObserver(() => {
-        const section = document.getElementById('sec-nexus');
-        if (section && section.dataset.nexusV3 !== '1') {
-          setTimeout(installShell, 260);
-          return;
-        }
+      const watchSection = section => {
+        const observer = new MutationObserver(() => {
         const isActive = Boolean(section?.classList.contains('active'));
         if (isActive && !state.wasActive) setTimeout(fitGraph, 80);
         state.wasActive = isActive;
-      });
-      observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+        });
+        observer.observe(section, { attributes: true, attributeFilter: ['class'] });
+      };
+      const section = document.getElementById('sec-nexus');
+      if (section) watchSection(section);
+      else {
+        const mountObserver = new MutationObserver(() => {
+          const mounted = document.getElementById('sec-nexus');
+          if (!mounted) return;
+          installShell();
+          watchSection(mounted);
+          mountObserver.disconnect();
+        });
+        mountObserver.observe(document.body, { childList: true, subtree: true });
+      }
       window.WebDevGymNexusV3 = { fit: fitGraph, refresh: () => { state.root?.removeAttribute('data-nexus-v3'); installShell(); }, version: 3 };
+      document.addEventListener('webdevgym:optimize', () => {
+        ['frame', 'miniFrame', 'dragFrame', 'searchFrame'].forEach(key => {
+          if (state[key]) cancelAnimationFrame(state[key]);
+          state[key] = 0;
+        });
+        state.svgRect = null;
+        saveGraph();
+      });
     }, 440);
   }
 

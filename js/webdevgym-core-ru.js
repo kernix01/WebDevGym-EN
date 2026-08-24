@@ -8219,7 +8219,7 @@ function aiNormalizeHistory(history) {
       role: msg.role,
       content: msg.content.slice(0, 8000),
       display: typeof msg.display === 'string' ? msg.display.slice(0, 8000) : undefined,
-      image: typeof msg.image === 'string' ? msg.image : undefined
+      image: typeof msg.image === 'string' && !msg.image.startsWith('data:') ? msg.image : undefined
     }))
     .slice(-AI_HISTORY_LIMIT);
 }
@@ -8322,6 +8322,28 @@ function aiReadAsDataUrl(file) {
   });
 }
 
+async function aiPrepareVisionDataUrl(file) {
+  if (file.size <= AI_ATTACH_VISION_MAX_BYTES) return aiReadAsDataUrl(file);
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 2048;
+    const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
+    canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const compressed = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    if (!compressed || compressed.size > AI_ATTACH_VISION_MAX_BYTES) return '';
+    return aiReadAsDataUrl(compressed);
+  } catch (error) {
+    return '';
+  }
+}
+
 async function aiHandleFiles(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
@@ -8347,8 +8369,11 @@ async function aiHandleFiles(fileList) {
       textTruncated: false
     };
 
-    if (isImage && file.size <= AI_ATTACH_VISION_MAX_BYTES) {
-      att.dataUrl = await aiReadAsDataUrl(file);
+    if (isImage) {
+      att.dataUrl = await aiPrepareVisionDataUrl(file);
+      if (!att.dataUrl && typeof showToast === 'function') {
+        showToast('Не удалось подготовить изображение для vision-модели. Выбери меньший JPG, PNG или WebP файл.');
+      }
     }
 
     if (aiCanReadAsText(file)) {
@@ -8443,11 +8468,12 @@ function aiBuildCurrentUserContent(text, attachments) {
 }
 
 function aiBuildUserApiContent(textContent, attachments, allowVision) {
-  const imageParts = allowVision
-    ? attachments
-        .filter(att => att.isImage && att.dataUrl)
-        .map(att => ({ type: 'image_url', image_url: { url: att.dataUrl } }))
-    : [];
+  // A real attached image is stronger evidence than a manually configured
+  // capability flag. OpenAI-compatible vision endpoints ignore the extra
+  // metadata flag and require the image_url part in the user message itself.
+  const imageParts = attachments
+    .filter(att => att.isImage && att.dataUrl)
+    .map(att => ({ type: 'image_url', image_url: { url: att.dataUrl } }));
   if (!imageParts.length) return textContent;
   return [{ type: 'text', text: textContent }, ...imageParts];
 }
@@ -8930,7 +8956,9 @@ function aiProviderPreset() {
   if (!provider || !baseUrl) return;
   baseUrl.value = provider.value === 'custom' ? '' : provider.value;
   const preset = AI_PROVIDER_PRESETS[provider.value];
-  if (model && !model.value) model.placeholder = provider.value === 'custom' ? 'model-name' : (preset?.placeholder || 'Exact model name from provider');
+  if (model && !model.value) model.placeholder = provider.value === 'custom'
+    ? 'model-name'
+    : (preset?.placeholder || 'Exact model name from provider');
 }
 
 function aiSaveCustomConfig() {

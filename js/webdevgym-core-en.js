@@ -8956,7 +8956,9 @@ function aiProviderPreset() {
   if (!provider || !baseUrl) return;
   baseUrl.value = provider.value === 'custom' ? '' : provider.value;
   const preset = AI_PROVIDER_PRESETS[provider.value];
-  if (model && !model.value) model.placeholder = provider.value === 'custom' ? 'model-name' : (preset?.placeholder || 'Exact model name from provider');
+  if (model && !model.value) model.placeholder = provider.value === 'custom'
+    ? 'model-name'
+    : (preset?.placeholder || 'Exact model name from provider');
 }
 
 function aiSaveCustomConfig() {

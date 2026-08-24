@@ -155,4 +155,3 @@ body.wdg-modern:not(.dark) #splash-screen.splash-hidden {
 
   #splash-screen .splash-progress span:first-child::after { transform: scaleX(1); }
 }
-
