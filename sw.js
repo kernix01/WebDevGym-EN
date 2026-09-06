@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webdevgym-shell-2026-09-06-v103';
+const CACHE_NAME = 'webdevgym-shell-2026-09-07-v104';
 const APP_SHELL = [
   './index.html',
   './index-en.html',
@@ -83,9 +83,9 @@ const APP_SHELL = [
   './js/webdevgym-ai-settings.js',
   './js/webdevgym-settings-v2.js?v=20260803-1',
   './js/webdevgym-github-token-vault.js',
-  './js/webdevgym-github-folder.js',
+  './js/webdevgym-github-folder.js?v=20260907-1',
   './js/webdevgym-studio-suite.js',
-  './js/webdevgym-github-workspace.js',
+  './js/webdevgym-github-workspace.js?v=20260907-1',
   './js/webdevgym-mobile-performance.js',
   './js/webdevgym-next.js',
   './js/webdevgym-calendar-v5.js',
