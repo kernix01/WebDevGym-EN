@@ -303,7 +303,8 @@
   ];
 
   function fallbackGuide(id, title, code) {
-    const language = ['html','css','js','ts','react','git','node','sql'].includes(id) ? id.toUpperCase() : (isEnglish ? 'this section' : 'этом разделе');
+    const languageLabels = { html:'HTML', css:'CSS', js:'JAVASCRIPT', ts:'TYPESCRIPT', react:'REACT', electron:'ELECTRON', git:'GIT', node:'NODE.JS', sql:'SQL', python:'PYTHON', csharp:'C#' };
+    const language = languageLabels[id] || (isEnglish ? 'this section' : 'этом разделе');
     if (isEnglish) return guide(
       'This block introduces “' + escapeHtml(title) + '”. Do not memorize the final fragment: identify its input, operation and visible result.',
       code ? 'Place the fragment in the file type used by the current ' + language + ' section. Keep HTML for structure, CSS for appearance and JavaScript for behaviour.' : 'Use this idea in the current section, then verify it in a small isolated example.',
@@ -439,7 +440,7 @@
 
   function sendToPlayground(block) {
     const data = analyze(block);
-    if (!data.code) return;
+    if (!data.code || ['python', 'csharp', 'electron'].includes(data.id)) return;
     closeDrawer();
     if (typeof window.switchTabByName === 'function') window.switchTabByName('playground');
     const baseHtml = '<main class="demo">\n  <h1>WebDevGym</h1>\n  <button class="action">Try it</button>\n  <p class="output">Result</p>\n</main>';
@@ -463,20 +464,24 @@
     }, 160);
   }
 
-  function enhanceBlocks() {
-    const learningSections = new Set(['html', 'css', 'js', 'ts', 'react', 'vite', 'node', 'sql', 'pg', 'linux', 'devops', 'git']);
-    document.querySelectorAll('.section > .block').forEach(block => {
+  function enhanceBlocks(root = document) {
+    const learningSections = new Set(['html', 'css', 'js', 'ts', 'react', 'electron', 'vite', 'node', 'sql', 'pg', 'linux', 'devops', 'git', 'python', 'csharp']);
+    const blocks = root instanceof Element && root.matches('.section')
+      ? root.querySelectorAll(':scope > .block')
+      : document.querySelectorAll('.section > .block');
+    blocks.forEach(block => {
       const sectionId = block.closest('.section')?.id?.replace(/^sec-/, '');
       if (!learningSections.has(sectionId)) return;
       if (block.dataset.wdgDeepReady === '1') return;
       const title = block.querySelector('.block-title');
       if (!title) return;
+      const supportsPlayground = Boolean(codeFrom(block)) && !['python', 'csharp', 'electron'].includes(sectionId);
       block.dataset.wdgDeepReady = '1';
       title.classList.add('wdgf-action-title');
       const actions = document.createElement('span');
       actions.className = 'wdgf-deep-actions';
       actions.innerHTML = '<button class="wdgf-deep-btn" type="button" data-learning-open title="' + ui.understand + '" aria-label="' + ui.understand + '">' + icon('tabler:bulb',15) + '</button>' +
-        '<button class="wdgf-deep-btn" type="button" data-learning-direct-play title="' + ui.playground + '" aria-label="' + ui.playground + '" ' + (codeFrom(block) ? '' : 'disabled') + '>' + icon('tabler:player-play',15) + '</button>';
+        '<button class="wdgf-deep-btn" type="button" data-learning-direct-play title="' + ui.playground + '" aria-label="' + ui.playground + '" ' + (supportsPlayground ? '' : 'disabled') + '>' + icon('tabler:player-play',15) + '</button>';
       title.appendChild(actions);
       actions.querySelector('[data-learning-open]').addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openDrawer(block); });
       actions.querySelector('[data-learning-direct-play]').addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); sendToPlayground(block); });
@@ -486,7 +491,16 @@
   function init() {
     buildDrawer();
     enhanceBlocks();
-    document.querySelectorAll('.section').forEach(section => new MutationObserver(enhanceBlocks).observe(section, { childList:true, subtree:true }));
+    document.querySelectorAll('.section').forEach(section => {
+      let frame = 0;
+      new MutationObserver(() => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          enhanceBlocks(section);
+        });
+      }).observe(section, { childList:true });
+    });
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && activeBlock) closeDrawer(); });
     window.WebDevGymLearning = { open:openDrawer, enhance:enhanceBlocks };
   }
@@ -703,8 +717,11 @@
     return wrap;
   }
 
-  function enhanceUsageGuides() {
-    document.querySelectorAll(sectionSelectors.map(id => `${id} .block`).join(',')).forEach(block => {
+  function enhanceUsageGuides(root = document) {
+    const blocks = root instanceof Element && root.matches('.section')
+      ? root.querySelectorAll(':scope > .block')
+      : document.querySelectorAll(sectionSelectors.map(id => `${id} .block`).join(','));
+    blocks.forEach(block => {
       if (block.dataset.wdgUsageGuide === '1') return;
       const code = block.querySelector('.code');
       const anchor = block.querySelector('.explain') || code || block.querySelector('.tip, .items') || block.querySelector('.block-title');
@@ -724,7 +741,15 @@
     enhanceUsageGuides();
     sectionSelectors.forEach(selector => {
       const section = document.querySelector(selector);
-      if (section) new MutationObserver(enhanceUsageGuides).observe(section, { childList:true, subtree:true });
+      if (!section) return;
+      let frame = 0;
+      new MutationObserver(() => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          enhanceUsageGuides(section);
+        });
+      }).observe(section, { childList:true });
     });
     window.WebDevGymUsageGuides = { enhance: enhanceUsageGuides };
   }

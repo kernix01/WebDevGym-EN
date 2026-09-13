@@ -4,8 +4,8 @@
   const STORAGE_KEY = 'wdg:mastery:v1';
   const MODE_KEY = 'wdg:mastery:independent';
   const LEARNING_SECTIONS = new Set([
-    'html', 'css', 'js', 'ts', 'react', 'vite', 'node', 'git',
-    'sql', 'pg', 'linux', 'devops', 'algo', 'figma'
+    'html', 'css', 'js', 'ts', 'react', 'electron', 'vite', 'node', 'git',
+    'sql', 'pg', 'linux', 'devops', 'python', 'csharp', 'algo', 'figma'
   ]);
 
   const SOURCES = {
@@ -28,6 +28,10 @@
     react: [
       ['React Learn', 'https://react.dev/learn'],
       ['React API', 'https://react.dev/reference/react']
+    ],
+    electron: [
+      ['Electron documentation', 'https://www.electronjs.org/docs/latest/'],
+      ['Electron security', 'https://www.electronjs.org/docs/latest/tutorial/security']
     ],
     vite: [
       ['Vite Guide', 'https://vite.dev/guide/'],
@@ -57,6 +61,14 @@
       ['Docker docs', 'https://docs.docker.com/'],
       ['MDN HTTP', 'https://developer.mozilla.org/docs/Web/HTTP']
     ],
+    python: [
+      ['Python tutorial', 'https://docs.python.org/3/tutorial/'],
+      ['Python standard library', 'https://docs.python.org/3/library/']
+    ],
+    csharp: [
+      ['C# guide', 'https://learn.microsoft.com/en-us/dotnet/csharp/'],
+      ['ASP.NET Core fundamentals', 'https://learn.microsoft.com/en-us/aspnet/core/fundamentals/']
+    ],
     algo: [
       ['MDN data structures', 'https://developer.mozilla.org/docs/Web/JavaScript/Guide/Indexed_collections'],
       ['ECMAScript collections', 'https://tc39.es/ecma262/#sec-keyed-collections']
@@ -75,7 +87,7 @@
     explain: 'Explain the main rule in your own words', explainHint: 'At least 30 meaningful characters. Write what the rule does and when you need it.',
     changed: 'I changed the example and predicted the result before running it',
     built: 'I completed a small variation without opening hints',
-    sources: 'Official sources', checked: 'Links reviewed on 13 Aug 2026',
+    sources: 'Official sources', checked: 'Links reviewed on 13 Sep 2026',
     saved: 'Saved locally', close: 'Close', reset: 'Reset checkpoint', incomplete: 'Complete all three checks',
     score: n => `${n}/3 confirmed`
   } : {
@@ -85,7 +97,7 @@
     explain: 'Объясни главное правило своими словами', explainHint: 'Минимум 30 осмысленных символов: что делает правило и когда оно нужно.',
     changed: 'Я изменил пример и предсказал результат до запуска',
     built: 'Я сделал небольшую вариацию без открытия подсказок',
-    sources: 'Официальные источники', checked: 'Ссылки проверены 13.08.2026',
+    sources: 'Официальные источники', checked: 'Ссылки проверены 13.09.2026',
     saved: 'Сохранено локально', close: 'Закрыть', reset: 'Сбросить проверку', incomplete: 'Выполни все три пункта',
     score: n => `${n}/3 подтверждено`
   };
@@ -302,7 +314,31 @@
     buildShell();
     applyMode(localStorage.getItem(MODE_KEY) === '1');
     refresh();
-    new MutationObserver(queueRefresh).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    const watchedSections = new WeakSet();
+    const watchSections = root => {
+      const sections = [];
+      if (root instanceof Element && root.matches('.section')) sections.push(root);
+      root.querySelectorAll?.('.section').forEach(section => sections.push(section));
+      sections.forEach(section => {
+        if (watchedSections.has(section)) return;
+        watchedSections.add(section);
+        new MutationObserver(queueRefresh).observe(section, { attributes: true, attributeFilter: ['class'] });
+      });
+    };
+    watchSections(document);
+    new MutationObserver(mutations => {
+      const active = document.querySelector('.section.active');
+      let refreshNeeded = false;
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (!(node instanceof Element)) return;
+          watchSections(node);
+          if (active && (node === active || active.contains(node) || node.contains(active))) refreshNeeded = true;
+        });
+        if (active && (mutation.target === active || active.contains(mutation.target))) refreshNeeded = true;
+      });
+      if (refreshNeeded) queueRefresh();
+    }).observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

@@ -6,7 +6,7 @@
   const STORE_KEY = isEnglish ? 'wdg_mastery_en_v1' : 'wdg_mastery_ru_v1';
   const PATH_KEY = isEnglish ? 'wdg_active_path_en_v1' : 'wdg_active_path_ru_v1';
   const CHECKPOINT_KEY = isEnglish ? 'wdg_checkpoints_en_v1' : 'wdg_checkpoints_ru_v1';
-  const COURSE_SECTIONS = ['html','css','js','git','vite','ts','react','node','sql','pg','linux','devops'];
+  const COURSE_SECTIONS = ['html','css','js','git','vite','ts','react','electron','node','sql','pg','linux','devops','python','csharp'];
   const LEVELS = [
     { value:0, label:L('Not started','Не начато'), short:'0' },
     { value:1, label:L('Read','Прочитал'), short:'1' },
@@ -126,6 +126,9 @@
   let activeRoutePathId = '';
   let routeZoom = 1;
   let routePan = { x:0, y:0 };
+  let topicsCache = null;
+  let topicsBySectionCache = null;
+  let masteryStateCache = null;
 
   function step(section, index, en, ru, match) {
     return { section, index, title:L(en,ru), match };
@@ -156,22 +159,54 @@
   }
 
   function topics() {
-    return COURSE_SECTIONS.flatMap(sectionId => {
+    if (topicsCache) return topicsCache;
+
+    topicsBySectionCache = new Map();
+    topicsCache = COURSE_SECTIONS.flatMap(sectionId => {
       const section = document.getElementById('sec-' + sectionId);
       if (!section) return [];
-      return Array.from(section.querySelectorAll(':scope > .block')).map((block,index) => ({
+      const sectionTopics = Array.from(section.querySelectorAll(':scope > .block')).map((block,index) => {
+        const title = blockTitle(block);
+        return {
+          id:sectionId + '-' + index,
+          sectionId,
+          index,
+          block,
+          title,
+          search:(title + ' ' + (block.querySelector('pre,code')?.textContent || '')).toLowerCase()
+        };
+      });
+      topicsBySectionCache.set(sectionId, sectionTopics);
+      return sectionTopics;
+    });
+    return topicsCache;
+  }
+
+  function invalidateTopicsCache() {
+    topicsCache = null;
+    topicsBySectionCache = null;
+  }
+
+  function enhanceSection(section) {
+    const sectionId = section?.id?.replace(/^sec-/, '');
+    if (!sectionId || !COURSE_SECTIONS.includes(sectionId)) return;
+    Array.from(section.querySelectorAll(':scope > .block')).forEach((block, index) => {
+      if (block.querySelector(':scope > .wdg-mastery')) return;
+      const title = blockTitle(block);
+      block.appendChild(masteryControl({
         id:sectionId + '-' + index,
         sectionId,
         index,
         block,
-        title:blockTitle(block),
-        search:(blockTitle(block) + ' ' + (block.querySelector('pre,code')?.textContent || '')).toLowerCase()
+        title,
+        search:(title + ' ' + (block.querySelector('pre,code')?.textContent || '')).toLowerCase()
       }));
     });
   }
 
   function state() {
-    return readJson(STORE_KEY, {});
+    if (!masteryStateCache) masteryStateCache = readJson(STORE_KEY, {});
+    return masteryStateCache;
   }
 
   function mastery(id) {
@@ -218,15 +253,16 @@
   }
 
   function enhanceMastery() {
-    topics().forEach(topic => {
-      if (topic.block.querySelector(':scope > .wdg-mastery')) return;
-      topic.block.appendChild(masteryControl(topic));
-    });
+    COURSE_SECTIONS
+      .map(sectionId => document.getElementById('sec-' + sectionId))
+      .filter(Boolean)
+      .forEach(enhanceSection);
     enhanceCheckpoints();
   }
 
   function findTopic(routeStep) {
-    const list = topics().filter(topic => topic.sectionId === routeStep.section);
+    topics();
+    const list = topicsBySectionCache.get(routeStep.section) || [];
     return list.find(topic => routeStep.match?.test(topic.title.toLowerCase()))
       || list.find(topic => routeStep.match?.test(topic.search))
       || list[routeStep.index]
@@ -415,6 +451,7 @@
 
   function refreshOpenPaths() {
     if (document.querySelector('.wdgf-feature-page[data-feature-page="paths"].open')) renderPaths();
+    else api?.invalidate?.('paths');
   }
 
   function checkpointData(sectionId) {
@@ -477,10 +514,27 @@
   function init() {
     api = window.WebDevGymFeatures;
     if (!api?.register) { setTimeout(init,80); return; }
-    api.register('paths', renderPaths, { title:copy.title, icon:'tabler:route', group:L('Learning','Обучение') });
+    api.register('paths', renderPaths, { title:copy.title, icon:'tabler:route', group:L('Learning','Обучение'), cacheOnNavigation:true });
     addNavigation();
     enhanceMastery();
-    document.querySelectorAll('.section').forEach(section => new MutationObserver(enhanceMastery).observe(section,{childList:true,subtree:true}));
+    document.querySelectorAll('.section').forEach(section => {
+      let frame = 0;
+      new MutationObserver(() => {
+        invalidateTopicsCache();
+        api?.invalidate?.('paths');
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          enhanceSection(section);
+        });
+      }).observe(section, { childList:true });
+    });
+    window.addEventListener('storage', event => {
+      if (event.key === STORE_KEY) masteryStateCache = null;
+    });
+    document.addEventListener('webdevgym:progress-imported', () => {
+      masteryStateCache = null;
+    });
     window.WebDevGymGrowth = { topics, mastery, setMastery, chooseRepeat, chooseLearn, openTopic, open:() => api.open('paths') };
   }
 

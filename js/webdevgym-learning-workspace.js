@@ -2,8 +2,8 @@
   'use strict';
 
   const LEARNING_IDS = new Set([
-    'html', 'css', 'js', 'ts', 'react', 'vite',
-    'node', 'sql', 'pg', 'linux', 'devops', 'git'
+    'html', 'css', 'js', 'ts', 'react', 'electron', 'vite',
+    'node', 'sql', 'pg', 'linux', 'devops', 'git', 'python', 'csharp'
   ]);
   const INDEX_KEY = 'wdgl_lesson_index_v1';
   const NOTE_KEY = 'wdgl_lesson_notes_v1';
@@ -81,9 +81,9 @@
   function sectionTitle(section) {
     const heroTitle = section.querySelector('.lang-section-hero-title')?.textContent?.trim();
     const labels = {
-      html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', react: 'React', vite: 'Vite',
+      html: 'HTML', css: 'CSS', js: 'JavaScript', ts: 'TypeScript', react: 'React', electron: 'Electron', vite: 'Vite',
       node: 'Node.js', sql: 'SQL', pg: 'PostgreSQL', linux: 'Linux',
-      devops: isEnglish ? 'Servers' : 'Серверы', git: 'Git & GitHub'
+      devops: isEnglish ? 'Servers' : 'Серверы', git: 'Git & GitHub', python: 'Python', csharp: 'C#'
     };
     return heroTitle || labels[sectionId(section)] || sectionId(section).toUpperCase();
   }
@@ -137,6 +137,27 @@
     return Array.from({ length: 9 }, (_, offset) => start + offset);
   }
 
+  function sectionMaterials(section) {
+    const materials = {
+      python: [
+        ['Python Docs', 'https://docs.python.org/3/'],
+        ['Python Packaging Guide', 'https://packaging.python.org/']
+      ],
+      csharp: [
+        ['Microsoft Learn C#', 'https://learn.microsoft.com/en-us/dotnet/csharp/'],
+        ['ASP.NET Core', 'https://learn.microsoft.com/en-us/aspnet/core/']
+      ],
+      electron: [
+        ['Electron Docs', 'https://www.electronjs.org/docs/latest/'],
+        ['Electron Forge', 'https://www.electronforge.io/']
+      ]
+    };
+    return materials[sectionId(section)] || [
+      ['MDN Web Docs', 'https://developer.mozilla.org/'],
+      ['web.dev Learn', 'https://web.dev/learn/']
+    ];
+  }
+
   function renderTimeline(blocks, current) {
     return timelineIndexes(blocks.length, current).map(index => {
       const block = blocks[index];
@@ -156,6 +177,7 @@
     const note = state.notes[noteKey] || '';
     const directPlay = block.querySelector('[data-learning-direct-play]:not([disabled])');
     const hintButton = block.querySelector('[data-learning-open]');
+    const materials = sectionMaterials(section);
     return `<aside class="wdgl-practice">
       <header class="wdgl-practice-head">
         <div><span>${copy.practice}</span><small>${index + 1} / ${learningBlocks(section).length}</small></div>
@@ -180,8 +202,7 @@
       </button>
       <section class="wdgl-materials">
         <strong>${copy.materials}</strong>
-        <a href="https://developer.mozilla.org/" target="_blank" rel="noopener">MDN Web Docs ${icon('tabler:external-link', 13)}</a>
-        <a href="https://web.dev/learn/" target="_blank" rel="noopener">web.dev Learn ${icon('tabler:external-link', 13)}</a>
+        ${materials.map(material => `<a href="${material[1]}" target="_blank" rel="noopener">${material[0]} ${icon('tabler:external-link', 13)}</a>`).join('')}
       </section>
       <section class="wdgl-notes">
         <label for="wdgl-note-${escapeHtml(noteKey)}">${icon('tabler:pencil', 17)} ${copy.notes}</label>
@@ -2501,6 +2522,30 @@
     if (scroll) section.querySelector('.wdgl-header')?.scrollIntoView({ block: 'start' });
   }
 
+  function openLesson(sectionName, target = {}) {
+    const id = String(sectionName || '').replace(/^sec-/, '');
+    if (!id) return false;
+    if (typeof window.WebDevGymNext?.open === 'function') window.WebDevGymNext.open(id);
+    else if (typeof window.switchTabByName === 'function') window.switchTabByName(id);
+
+    const reveal = () => {
+      const section = document.getElementById(`sec-${id}`) || document.getElementById(id);
+      if (!section) return false;
+      const blocks = learningBlocks(section);
+      const wantedTitle = String(target.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const index = blocks.findIndex(block => {
+        if (target.blockId && block.id === target.blockId) return true;
+        return wantedTitle && cleanTitle(block).toLowerCase() === wantedTitle;
+      });
+      enhanceSection(section);
+      showLesson(section, index >= 0 ? index : currentIndex(section), true);
+      return index >= 0;
+    };
+
+    window.setTimeout(reveal, 90);
+    return true;
+  }
+
   function enhanceSection(section) {
     if (!LEARNING_IDS.has(sectionId(section))) return;
     const blocks = learningBlocks(section);
@@ -2525,39 +2570,62 @@
 
   let activeSection = null;
   let activeBlockCount = 0;
+  let syncTimer = 0;
+  let activationObserver = null;
 
   function syncActiveSection(force = false) {
-    cleanupUniversalActions();
     const section = document.querySelector('.section.active');
-    const sectionVisible = section && section.getClientRects().length > 0 && getComputedStyle(section).visibility !== 'hidden';
+    const legacyAreaHidden = document.body.matches('.wdgn-overview-open, .wdgn-custom-page-open, .wdgf-page-open, .wdgr-settings-open');
+    const sectionVisible = section && !section.hidden && !legacyAreaHidden;
     if (!section || !sectionVisible || !LEARNING_IDS.has(sectionId(section))) {
       document.body.classList.remove('wdgl-learning-open');
-      activeSection = null;
-      activeBlockCount = 0;
       return;
     }
+    document.body.classList.add('wdgl-learning-open');
     const blockCount = learningBlocks(section).length;
     const chromeReady = Boolean(section.querySelector(':scope > .wdgl-header'));
     if (!force && activeSection === section && activeBlockCount === blockCount && chromeReady) return;
     activeSection = section;
     activeBlockCount = blockCount;
-    document.body.classList.add('wdgl-learning-open');
     enhanceSection(section);
+  }
+
+  function scheduleSync(force = false) {
+    window.clearTimeout(syncTimer);
+    syncTimer = window.setTimeout(() => syncActiveSection(force), 60);
+  }
+
+  function watchSectionActivation(root = document) {
+    if (activationObserver) return;
+    const container = document.querySelector('.wrap') || document.body;
+    activationObserver = new MutationObserver(records => {
+      const sectionChanged = records.some(record =>
+        record.target instanceof Element && record.target.classList.contains('section')
+      );
+      if (sectionChanged) scheduleSync();
+    });
+    activationObserver.observe(container, { subtree: true, attributes: true, attributeFilter: ['class'] });
   }
 
   function init() {
     cleanupUniversalActions();
-    document.addEventListener('click', () => setTimeout(syncActiveSection, 60), true);
-    document.addEventListener('keydown', () => setTimeout(syncActiveSection, 60), true);
+    watchSectionActivation();
+    document.addEventListener('click', () => scheduleSync(), true);
+    document.addEventListener('webdevgym:curriculum-rendered', event => {
+      watchSectionActivation(event.target instanceof Element ? event.target : document);
+      scheduleSync(true);
+    });
     let attempts = 0;
     const waitForCurriculum = setInterval(() => {
       attempts += 1;
+      watchSectionActivation();
       syncActiveSection();
       if (document.querySelector('.section.active > .block') || attempts >= 20) clearInterval(waitForCurriculum);
     }, 250);
-    setInterval(syncActiveSection, 800);
     syncActiveSection(true);
   }
+
+  window.WebDevGymLearningWorkspace = Object.freeze({ openLesson });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => setTimeout(init, 900), { once: true });

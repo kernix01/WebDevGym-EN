@@ -30,6 +30,7 @@
     activeBlock: 0,
     graph: { x: 0, y: 0, scale: 1, positions: {} }
   };
+  let workspaceSyncFrame = 0;
 
   function icon(name, size) {
     return '<iconify-icon icon="' + name + '" width="' + (size || 18) + '" height="' + (size || 18) + '"></iconify-icon>';
@@ -46,7 +47,15 @@
       const button = document.querySelector('.tab[onclick*="\'' + tab + '\'"]');
       if (button) button.click();
     }
-    requestAnimationFrame(syncWorkspace);
+    scheduleWorkspaceSync();
+  }
+
+  function scheduleWorkspaceSync() {
+    if (workspaceSyncFrame) return;
+    workspaceSyncFrame = requestAnimationFrame(function () {
+      workspaceSyncFrame = 0;
+      syncWorkspace();
+    });
   }
 
   function buildSidebar() {
@@ -95,6 +104,10 @@
   }
 
   function miniGraphMarkup() {
+    if (!safeNotes().length) {
+      return '<div class="wdg-mini-graph" id="wdgMiniGraph" role="button" tabindex="0" aria-label="Nexus"><svg viewBox="0 0 304 280" aria-hidden="true"></svg></div>' +
+        '<div class="wdg-graph-caption">' + icon('tabler:note', 14) + '<span>' + (isEnglish ? 'Nexus is empty. Create the first note.' : 'Nexus пуст. Создай первую заметку.') + '</span></div>';
+    }
     return '<div class="wdg-mini-graph" id="wdgMiniGraph" role="button" tabindex="0" aria-label="Nexus">' +
       '<svg viewBox="0 0 304 280" aria-hidden="true">' +
         '<path class="wdg-mini-edge" d="M154 141 C112 131 95 94 65 74 M154 141 C197 122 214 90 248 75 M154 141 C204 151 221 184 253 201 M154 141 C119 161 107 194 73 213 M154 141 C155 99 155 79 155 48 M65 74 C99 65 124 54 155 48 M248 75 C215 62 190 52 155 48" />' +
@@ -126,6 +139,7 @@
   }
 
   function activeSection() {
+    if (document.body.matches('.wdgn-overview-open, .wdgn-custom-page-open, .wdgf-page-open, .wdgr-settings-open')) return null;
     return document.querySelector('.section.active') || document.querySelector('.section');
   }
 
@@ -142,8 +156,13 @@
   }
 
   function blocksIn(section) {
-    return Array.from(section?.querySelectorAll(':scope > .block, :scope > .tool-block') || []).filter(function (el) {
-      return getComputedStyle(el).display !== 'none';
+    const blocks = Array.from(section?.querySelectorAll(':scope > .block, :scope > .tool-block') || []);
+    if (section?.classList.contains('wdgl-workspace')) {
+      const current = blocks.find(function (block) { return block.classList.contains('wdgl-current'); });
+      return current ? [current] : blocks.slice(0, 1);
+    }
+    return blocks.filter(function (element) {
+      return !element.hidden && !element.classList.contains('search-hidden');
     });
   }
 
@@ -223,18 +242,21 @@
     syncNavigation(id);
     renderLessons(section);
     updateDock(section);
-    updateProgressShell();
     if (id === 'nexus') setTimeout(renderNexusGraph, 30);
   }
 
   function observeOldApp() {
-    document.querySelectorAll('.section').forEach(function (section) {
-      new MutationObserver(syncWorkspace).observe(section, { attributes: true, attributeFilter: ['class'] });
-    });
+    const root = document.querySelector('.wrap') || document.body;
+    new MutationObserver(function (records) {
+      const sectionChanged = records.some(function (record) {
+        return record.target instanceof Element && record.target.classList.contains('section');
+      });
+      if (sectionChanged) scheduleWorkspaceSync();
+    }).observe(root, { subtree: true, attributes: true, attributeFilter: ['class'] });
     document.addEventListener('change', function (event) {
       if (event.target.matches('.prog-cb')) requestAnimationFrame(updateProgressShell);
     });
-    window.addEventListener('hashchange', syncWorkspace);
+    window.addEventListener('hashchange', scheduleWorkspaceSync);
   }
 
   /* Nexus --------------------------------------------------------------- */
@@ -736,9 +758,10 @@
     loadGraphState();
     enhanceNexus();
     observeOldApp();
-    syncWorkspace();
-    setTimeout(syncWorkspace, 400);
-    setTimeout(syncWorkspace, 1500);
+    scheduleWorkspaceSync();
+    updateProgressShell();
+    setTimeout(scheduleWorkspaceSync, 400);
+    setTimeout(scheduleWorkspaceSync, 1500);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

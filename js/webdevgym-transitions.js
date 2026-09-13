@@ -12,6 +12,17 @@
     '.wdgr-settings-page.active'
   ].join(',');
 
+  const viewRootSelector = [
+    '.section',
+    '.wdgn-overview',
+    '.wdgn-sections-page',
+    '.wdgf-feature-page',
+    '.wdgt-page',
+    '.wdg-growth-page',
+    '.wdgr-settings-view',
+    '.wdgr-settings-page'
+  ].join(',');
+
   const running = new Map();
   const queued = new Set();
   let ready = false;
@@ -23,23 +34,23 @@
 
   function isVisibleView(element) {
     if (!isActiveView(element) || element.hidden) return false;
-    const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden';
+    if (element.matches('.section') && document.body.matches('.wdgn-overview-open, .wdgn-custom-page-open, .wdgf-page-open, .wdgr-settings-open')) return false;
+    return !element.closest('[hidden]');
   }
 
   function animateView(element) {
     if (!ready || !isVisibleView(element) || element.closest('[data-no-view-transition]')) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
     running.get(element)?.cancel();
 
     const lightEffects = document.body.classList.contains('wdgr-light-effects');
+    const compactViewport = window.matchMedia('(max-width: 680px)').matches;
     const animation = element.animate([
-      { opacity: lightEffects ? 0.86 : 0.68, transform: `translate3d(0, ${lightEffects ? 3 : 6}px, 0)` },
-      { opacity: 1, transform: 'translate3d(0, 0, 0)' }
+      { opacity: lightEffects ? 0.98 : 0.95 },
+      { opacity: 1 }
     ], {
-      duration: lightEffects ? 110 : 180,
-      easing: 'cubic-bezier(.22, .8, .32, 1)',
+      duration: compactViewport || lightEffects ? 70 : 100,
+      easing: 'ease-out',
       fill: 'both'
     });
     animation.id = 'webdevgym-view-transition';
@@ -78,8 +89,14 @@
   function start() {
     const observer = new MutationObserver(mutations => {
       mutations.forEach(mutation => {
-        if (mutation.type === 'attributes') queueView(mutation.target);
-        mutation.addedNodes.forEach(node => queueView(node, true));
+        if (mutation.type === 'attributes') {
+          queueView(mutation.target);
+          return;
+        }
+        mutation.addedNodes.forEach(node => {
+          if (!(node instanceof Element)) return;
+          queueView(node, true);
+        });
       });
       running.forEach((animation, element) => {
         if (isVisibleView(element)) return;

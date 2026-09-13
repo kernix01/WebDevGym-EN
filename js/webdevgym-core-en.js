@@ -716,7 +716,7 @@ function resetProgress() {
 
 // ===== TAB BADGES =====
 function updateTabBadges() {
-  ['html','css','js','ts','react','git','node','sql','devops','linux','vite','pg'].forEach(lang => {
+  ['html','css','js','ts','react','electron','git','node','sql','devops','linux','vite','pg','python','csharp'].forEach(lang => {
     const sec = document.getElementById('sec-' + lang);
     if (!sec) return;
     const all = sec.querySelectorAll('.prog-cb:not([disabled])');
@@ -779,9 +779,6 @@ function switchTab(id, btn) {
   }
   if (id === 'calendar' && typeof wdgCalRender === 'function') {
     setTimeout(wdgCalRender, 50);
-  }
-  if (typeof applyMainLanguage === 'function') {
-    setTimeout(applyMainLanguage, 0);
   }
 }
 
@@ -848,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ===== ПРОГРЕСС DASHBOARD BARS =====
 function updatePdcBars() {
-  ['html','css','js','ts','react','git','node','sql','devops','linux','vite','pg'].forEach(lang => {
+  ['html','css','js','ts','react','electron','git','node','sql','devops','linux','vite','pg','python','csharp'].forEach(lang => {
     const sec = document.getElementById('sec-' + lang);
     if (!sec) return;
     const all = sec.querySelectorAll('.prog-cb:not([disabled])');
@@ -5364,6 +5361,16 @@ function pgBuildEntryDoc(entryName) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(entry.content, 'text/html');
 
+  // A sandboxed srcdoc inherits a file:// base URL and Chrome blocks relative navigation.
+  if (location.protocol === 'file:') {
+    doc.querySelectorAll('link[rel~="manifest"]').forEach(link => link.remove());
+    if (!doc.querySelector('base')) {
+      const base = doc.createElement('base');
+      base.setAttribute('href', 'about:blank');
+      (doc.head || doc.documentElement).prepend(base);
+    }
+  }
+
   // 1) Replace <link href="X.css"> with <style>...</style>
   doc.querySelectorAll('link[href]').forEach(link => {
     const href = (link.getAttribute('href') || '').replace(/^\.?\//, '').split(/[?#]/)[0];
@@ -5381,8 +5388,19 @@ function pgBuildEntryDoc(entryName) {
     const jsFile = jsFiles.find(f => f.name === src);
     if (jsFile) {
       const newScr = doc.createElement('script');
+      Array.from(scr.attributes).forEach(attribute => {
+        if (!['src', 'integrity', 'crossorigin'].includes(attribute.name)) {
+          newScr.setAttribute(attribute.name, attribute.value);
+        }
+      });
       newScr.textContent = jsFile.content;
-      scr.parentNode.replaceChild(newScr, scr);
+      if (scr.hasAttribute('defer') && (scr.getAttribute('type') || '').toLowerCase() !== 'module') {
+        newScr.removeAttribute('defer');
+        scr.remove();
+        (doc.body || doc.documentElement).appendChild(newScr);
+      } else {
+        scr.parentNode.replaceChild(newScr, scr);
+      }
     }
   });
 
@@ -5556,7 +5574,7 @@ function pgInitDefault() {
     ];
     pgActiveFile = 'index.html';
     pgSwitchFile('index.html');
-    runPlayground();
+    if (document.getElementById('sec-playground')?.classList.contains('active')) runPlayground();
   }
 }
 
@@ -9288,11 +9306,8 @@ function aiAddInsertButtons() {
 const NEXUS_STORAGE_KEY = 'webdevgym_nexus_notes_v1';
 let nexusNotes = [];
 let nexusActiveID = null;
-function nexusDefaultNotes(){ return [
-  { id:'nexus-dom', title:'DOM', body:'DOM is the browser object tree for HTML. Related: [[Events]], [[localStorage]].', updatedAt:Date.now() },
-  { id:'nexus-localstorage', title:'localStorage', body:'localStorage saves strings in the browser. Good for theme, progress, notes. Related: [[DOM]].', updatedAt:Date.now()-1000 }
-]; }
-function nexusLoadNotes(){ try{ const saved=JSON.parse(localStorage.getItem(NEXUS_STORAGE_KEY)||'null'); nexusNotes=Array.isArray(saved)&&saved.length?saved:nexusDefaultNotes(); }catch(e){ nexusNotes=nexusDefaultNotes(); } nexusActiveID=nexusNotes[0]?.id||null; }
+function nexusDefaultNotes(){ return []; }
+function nexusLoadNotes(){ try{ const saved=JSON.parse(localStorage.getItem(NEXUS_STORAGE_KEY)||'null'); nexusNotes=Array.isArray(saved)?saved:nexusDefaultNotes(); }catch(e){ nexusNotes=nexusDefaultNotes(); } nexusActiveID=nexusNotes[0]?.id||null; }
 function nexusPersist(){ localStorage.setItem(NEXUS_STORAGE_KEY, JSON.stringify(nexusNotes)); }
 function nexusSlug(title){ return (title||'Untitled').trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-zа-яё0-9\-_]/gi,'').slice(0,60)||('note-'+Date.now()); }
 function nexusFindByTitle(title){ const wanted=(title||'').trim().toLowerCase(); return nexusNotes.find(n=>n.title.trim().toLowerCase()===wanted); }
